@@ -37,7 +37,15 @@ export class BlockRegistry {
     const entry = this.blocks.get(id);
     if (!entry || entry.mounted) return;
 
-    const cleanup = entry.def.mount(this.context) || null;
+    let cleanup = null;
+    try {
+      cleanup = entry.def.mount(this.context) || null;
+    } catch (err) {
+      // 一塊積木壞掉不要拖垮其他積木
+      console.error(`[BlockRegistry] 積木 ${id} 載入失敗`, err);
+      this.context.toast?.(`「${entry.def.name}」載入失敗，其他功能照常`);
+      return;
+    }
     entry.mounted = true;
     entry.cleanup = typeof cleanup === 'function' ? cleanup : null;
 

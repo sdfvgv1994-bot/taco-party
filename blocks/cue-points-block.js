@@ -81,7 +81,18 @@ export const cuePointsBlock = {
       toast(`已設定進歌 ${startSec}s / 切歌 ${endSec || '結尾'}s`);
     });
 
-    const unsubStore = store.subscribe(syncInputs);
+    // 只有換歌時才把輸入框換成那首歌存的值；其他變動（例如補上歌名）只更新上面的歌名，不清掉正在打的數字
+    let shownVideoId = store.getCurrentTrack()?.videoId ?? null;
+    const unsubStore = store.subscribe(() => {
+      const track = store.getCurrentTrack();
+      const vid = track?.videoId ?? null;
+      if (vid !== shownVideoId) {
+        shownVideoId = vid;
+        syncInputs();
+      } else if (track) {
+        hintEl.textContent = track.title.slice(0, 18) + (track.title.length > 18 ? '...' : '');
+      }
+    });
     const unsubTime = bus.on('player:time', ({ currentTime }) => {
       latestTime = currentTime || 0;
     });

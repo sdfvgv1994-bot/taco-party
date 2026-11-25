@@ -37,7 +37,7 @@ export const queueBlock = {
 
       <div class="card">
         <h3>我的收藏歌單</h3>
-        <p class="muted">儲存在手機本機，隨時一鍵載入開播</p>
+        <p class="muted">儲存在手機本機，點一下就加進待播清單</p>
         <div id="savedPlaylistsList" class="queue-list"></div>
       </div>
     `;
@@ -79,7 +79,7 @@ export const queueBlock = {
           <div class="queue-item">
             <div class="queue-info" data-load-pl="${idx}">
               <div class="queue-title">🎶 ${escapeHtml(pl.name)}</div>
-              <div class="queue-meta">${pl.tracks.length} 首歌曲 · 點擊載入播放</div>
+              <div class="queue-meta">${pl.tracks.length} 首歌曲 · 點一下加進待播清單</div>
             </div>
             <div class="queue-actions">
               <button class="btn btn-sm btn-primary" data-load-pl="${idx}" type="button">載入</button>
@@ -149,6 +149,8 @@ export const queueBlock = {
       const delEl = e.target.closest('[data-del-pl]');
       if (delEl) {
         const idx = Number(delEl.dataset.delPl);
+        const pl = store.getState().savedPlaylists[idx];
+        if (!pl || !confirm(`確定要刪除收藏歌單「${pl.name}」嗎？`)) return;
         const nextSaved = store.getState().savedPlaylists.filter((_, i) => i !== idx);
         store.setState({ savedPlaylists: nextSaved });
         toast('已刪除收藏歌單');
@@ -177,6 +179,8 @@ export const queueBlock = {
         toast('派對房模式請逐首移除或離開房間');
         return;
       }
+      const n = store.getState().queue.length;
+      if (!n || !confirm(`確定要清空待播清單（${n} 首）嗎？`)) return;
       store.setState({ queue: [], currentIndex: -1, isPlaying: false });
       toast('已清空待播清單');
     });

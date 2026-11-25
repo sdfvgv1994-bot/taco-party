@@ -629,3 +629,8 @@ textarea.input {
   color: var(--text-muted);
   margin: 12px 0 4px;
 }
+
+/* 封面只是蓋住畫面：點下去要能點到底下的 YouTube 播放器（iPhone 有時要直接點影片才肯播） */
+.cover-overlay {
+  pointer-events: none;
+}

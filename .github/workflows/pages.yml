@@ -47,6 +47,9 @@ jobs:
           sed -i -E "s#src=\"app\.js\"#src=\"app.js?v=$v\"#" site/index.html
           sed -i -E "s#href=\"styles\.css\"#href=\"styles.css?v=$v\"#" site/index.html
           grep -c "?v=$v" site/index.html
+          # 每個 JS 模組互相 import 時也加版本號：部署後不會新舊檔混用
+          sed -i -E "s#(from '[^']+\.js)'#\1?v=$v'#g" site/app.js site/core/*.js site/blocks/*.js
+          grep -c "?v=$v'" site/app.js
           sed -i "s#name=\"app-version\" content=\"dev\"#name=\"app-version\" content=\"$v\"#" site/index.html
           sed -i "s#name=\"app-built\" content=\"\"#name=\"app-built\" content=\"$(TZ=Asia/Taipei date '+%m/%d %H:%M')\"#" site/index.html
           sed -i "s#const CACHE = PREFIX + '-v1';#const CACHE = PREFIX + '-$v';#" site/sw.js

@@ -130,7 +130,11 @@ export function nextIndex(state, step = 1, auto = false, rand = Math.random) {
   if (shuffle && n > 1) {
     const pool = [];
     for (let i = 0; i < n; i++) if (i !== cur && ok(i)) pool.push(i);
-    if (!pool.length) return -1;
+    if (!pool.length) {
+      // 只剩正在播的這首能播：跟不開隨機時一樣，全部循環就重播它
+      if (auto && repeatMode === 'all' && cur >= 0 && cur < n && !queue[cur].bad) return cur;
+      return -1;
+    }
     return pool[Math.floor(rand() * pool.length)];
   }
 
@@ -150,9 +154,15 @@ export function nextIndex(state, step = 1, auto = false, rand = Math.random) {
 /** YouTube 播放器的錯誤代碼 → 給人看的原因 */
 export function errorReason(code) {
   if (code === 100) return '這首影片已被刪除或設為私人';
-  if (code === 101 || code === 150 || code === 153) return '上傳者不開放在其他網站播放';
+  if (code === 101 || code === 150) return '上傳者不開放在其他網站播放';
+  if (code === 153) return '播放器設定有問題（重新整理再試）';
   if (code === 2) return '影片代號有誤';
   return '這首播放失敗';
+}
+
+/** 這個錯誤是不是「歌本身播不了」（要標記起來，之後自動換歌跳過）；其他錯誤可能只是暫時的，不標記 */
+export function isSongError(code) {
+  return code === 100 || code === 101 || code === 150 || code === 2;
 }
 
 export function escapeHtml(str) {

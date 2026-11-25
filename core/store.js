@@ -1,4 +1,4 @@
-import { addToQueue } from './yt-core.js';
+import { addToQueue, YT_ID, placeholderTitle } from './yt-core.js';
 
 const STORAGE_KEY = 'taco_party_state_v1';
 
@@ -36,8 +36,20 @@ function loadPersistedState() {
         ...(parsed.enabledBlocks || {})
       }
     };
-    if (!Array.isArray(state.queue)) state.queue = [];
-    if (!Array.isArray(state.savedPlaylists)) state.savedPlaylists = [];
+    // 存檔裡壞掉的歌（不是物件、沒有影片代號）直接丟掉，不要讓整個 App 打不開
+    const okTrack = (t) => t && typeof t === 'object' && typeof t.videoId === 'string' && YT_ID.test(t.videoId);
+    const cleanTracks = (list) =>
+      (Array.isArray(list) ? list : []).filter(okTrack).map((t) => ({
+        ...t,
+        id: String(t.id || Math.random().toString(36).slice(2, 11)),
+        title: t.title ? String(t.title) : placeholderTitle(t.videoId),
+        author: String(t.author || 'YouTube')
+      }));
+    state.queue = cleanTracks(state.queue);
+    state.savedPlaylists = (Array.isArray(state.savedPlaylists) ? state.savedPlaylists : [])
+      .filter((pl) => pl && typeof pl === 'object')
+      .map((pl) => ({ ...pl, name: String(pl.name || '未命名歌單'), tracks: cleanTracks(pl.tracks) }));
+    if (!state.cuePoints || typeof state.cuePoints !== 'object') state.cuePoints = {};
     if (!(state.currentIndex >= -1 && state.currentIndex < state.queue.length)) {
       state.currentIndex = state.queue.length ? 0 : -1;
     }

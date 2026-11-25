@@ -81,7 +81,9 @@ export const playlistImporterBlock = {
       }
     }
 
+    let importing = false;
     async function importUrl(mode) {
+      if (importing) return; // 還在讀上一批：不要重複按
       const raw = input.value.trim();
       if (!raw) {
         say('請先貼上 YouTube 連結', true);
@@ -93,6 +95,7 @@ export const playlistImporterBlock = {
         return;
       }
 
+      importing = true;
       const prevText = importAutoBtn.textContent;
       importAutoBtn.disabled = true;
       importSingleBtn.disabled = true;
@@ -100,49 +103,44 @@ export const playlistImporterBlock = {
 
       try {
         const playNext = playNextCheck.checked;
-        const videoIds = [];
-        const lists = [];
+        const notes = [];
         let mixCount = 0;
         let listOnly = 0;
+        let listFailed = 0;
+        const listCount = mode === 'single' ? 0 : found.filter((r) => r.list).length;
+        if (listCount) say(`正在讀取 ${listCount} 份播放清單…`);
+
+        // 照貼上的順序一個一個處理，最後一次加進清單（插播時順序也跟貼上的一樣）
+        const ids = [];
         for (const r of found) {
           if (r.mix) mixCount++;
-          if (mode === 'single') {
-            if (r.video) videoIds.push(r.video);
-            else listOnly++;
-          } else if (r.list) lists.push(r.list);
-          else if (r.video) videoIds.push(r.video);
+          if (mode !== 'single' && r.list) {
+            const listIds = await resolvePlaylist(r.list);
+            if (!alive) return;
+            if (listIds.length) ids.push(...listIds);
+            else {
+              listFailed++;
+              if (r.video) ids.push(r.video); // 清單讀不到：至少加連結裡那一首
+            }
+          } else if (r.video) ids.push(r.video);
+          else listOnly++;
         }
 
-        const notes = [];
-        let added = 0;
-        let skipped = 0;
-        const addIds = (ids) => {
-          const res = store.addTracks(ids.map((id) => makeTrack(id)), playNext);
-          added += res.added;
-          skipped += res.skipped;
-        };
-
-        if (videoIds.length) addIds(videoIds);
-        if (lists.length) say(`正在讀取 ${lists.length} 份播放清單…`);
-        for (const listId of lists) {
-          const ids = await resolvePlaylist(listId);
-          if (!alive) return;
-          if (ids.length) addIds(ids);
-          else notes.push('有一份播放清單讀不到（可能是私人清單）');
-        }
+        const res = ids.length ? store.addTracks(ids.map((id) => makeTrack(id)), playNext) : { added: 0, skipped: 0 };
+        if (listFailed) notes.push(`${listFailed} 份播放清單讀不到（可能是私人清單或網路不穩）`);
         if (mixCount) notes.push('「自動合輯」類的清單讀不到，只加入連結裡那一首');
         if (listOnly) notes.push('播放清單連結請按「匯入歌單 / 加入」');
 
         let head;
-        if (added) head = `已加入 ${added} 首`;
-        else if (skipped) head = '這些歌已經在清單裡了';
+        if (res.added) head = `已加入 ${res.added} 首`;
+        else if (res.skipped) head = '這些歌已經在清單裡了';
         else head = '沒有加入任何歌';
-        if (added && skipped) head += `（${skipped} 首本來就有）`;
+        if (res.added && res.skipped) head += `（${res.skipped} 首本來就有）`;
         const text = [head, ...notes].join('；');
-        say(text, !added);
+        say(text, !res.added);
         toast(text);
 
-        if (added) {
+        if (res.added) {
           input.value = '';
           if (playNext) playNextCheck.checked = false;
           fillTitles();
@@ -150,6 +148,7 @@ export const playlistImporterBlock = {
       } catch (err) {
         say('解析連結失敗：' + (err && err.message ? err.message : '請再試一次'), true);
       } finally {
+        importing = false;
         importAutoBtn.disabled = false;
         importSingleBtn.disabled = false;
         importAutoBtn.textContent = prevText;

@@ -162,8 +162,11 @@ def test_next_index_skips_bad_songs():
       oneManualMoves: N(S([false, false], 0, { repeatMode: 'one' }), 1, false),
       oneButBad: N(S([true, false], 0, { repeatMode: 'one' }), 1, true),
       shuffleNeverCurOrBad: [0, 1, 2, 3, 4, 5].map((k) => N(S([false, true, false, false], 0, { shuffle: true }), 1, true, () => k / 6)),
-      shuffleAllBad: N(S([false, true, true], 0, { shuffle: true }), 1, true),
-      reasons: [c.errorReason(150), c.errorReason(101), c.errorReason(100), c.errorReason(5)]
+      shuffleOnlyCur: N(S([false, true, true], 0, { shuffle: true }), 1, true),
+      shuffleOnlyCurOff: N(S([false, true, true], 0, { shuffle: true, repeatMode: 'off' }), 1, true),
+      shuffleAllBad: N(S([true, true, true], 0, { shuffle: true }), 1, true),
+      reasons: [c.errorReason(150), c.errorReason(101), c.errorReason(100), c.errorReason(5), c.errorReason(153)],
+      songErr: [100, 101, 150, 2, 5, 153].map(c.isSongError)
     }));
     """)
     assert r["empty"] == -1
@@ -178,9 +181,12 @@ def test_next_index_skips_bad_songs():
     assert r["oneRepeats"] == 0 and r["oneManualMoves"] == 1
     assert r["oneButBad"] == 1, "單曲循環但這首播不了：換下一首，不要卡住"
     assert set(r["shuffleNeverCurOrBad"]) <= {2, 3} and set(r["shuffleNeverCurOrBad"]) == {2, 3}
-    assert r["shuffleAllBad"] == -1
+    assert r["shuffleOnlyCur"] == 0, "隨機＋全部循環、只剩這首能播：跟不開隨機一樣重播它"
+    assert r["shuffleOnlyCurOff"] == -1 and r["shuffleAllBad"] == -1
     assert r["reasons"][0] == r["reasons"][1] == "上傳者不開放在其他網站播放"
     assert r["reasons"][2] == "這首影片已被刪除或設為私人" and r["reasons"][3] == "這首播放失敗"
+    assert "重新整理" in r["reasons"][4]
+    assert r["songErr"] == [True, True, True, True, False, False], "暫時性錯誤（5、153）不能把歌標成播不了"
 
 
 def test_escape_html():
@@ -192,3 +198,35 @@ def test_escape_html():
     console.log(JSON.stringify(c.escapeHtml('<img src=x onerror="a()"> & \\'')));
     """)
     assert r == "&lt;img src=x onerror=&quot;a()&quot;&gt; &amp; &#39;"
+
+
+def test_store_survives_broken_save():
+    """手機裡的存檔壞掉（清單裡有 null、收藏歌單少了 tracks）也要打得開，壞的那幾筆丟掉就好。"""
+    if not shutil.which("node"):
+        return
+    r = run_node("""
+    const mem = {};
+    globalThis.localStorage = { getItem: (k) => mem[k] ?? null, setItem: (k, v) => { mem[k] = String(v); } };
+    mem['taco_party_state_v1'] = JSON.stringify({
+      queue: [null, 5, { videoId: 'bad' }, { videoId: 'dQw4w9WgXcQ', title: 'ok' }, { videoId: '9bZkp7q19f0' }],
+      currentIndex: 7, cuePoints: null,
+      savedPlaylists: [null, { name: 'A' }, { name: 'B', tracks: [null, { videoId: 'kJQP7kiw5Fk' }] }]
+    });
+    const { Store } = await import('./core/store.js');
+    const st = new Store().getState();
+    const st2 = new Store();
+    const added = st2.addTracks([{ videoId: 'dQw4w9WgXcQ' }, { videoId: 'kJQP7kiw5Fk', id: 'x' }]);
+    st2.updateTrack('kJQP7kiw5Fk', { title: '新歌名' });
+    console.log(JSON.stringify({
+      ids: st.queue.map((t) => t.videoId), cur: st.currentIndex, cues: st.cuePoints,
+      pls: st.savedPlaylists.map((p) => [p.name, p.tracks.length]),
+      added, titles: st2.getState().queue.map((t) => t.title),
+      saved: JSON.parse(mem['taco_party_state_v1']).queue.length
+    }));
+    """)
+    assert r["ids"] == ["dQw4w9WgXcQ", "9bZkp7q19f0"]
+    assert r["cur"] == 0 and r["cues"] == {}
+    assert r["pls"] == [["A", 0], ["B", 1]]
+    assert r["added"] == {"added": 1, "skipped": 1}
+    assert r["titles"] == ["ok", "YouTube 影片 (9bZkp7q19f0)", "新歌名"]
+    assert r["saved"] == 3

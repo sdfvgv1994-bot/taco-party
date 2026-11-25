@@ -4,7 +4,7 @@
  * 播不了的歌（上傳者不開放嵌入、已刪除）會標記起來，自動換歌時跳過，全部都播不了就停下來
  */
 import { loadYouTubeAPI } from '../core/yt-api.js';
-import { nextIndex, needsTitle, errorReason } from '../core/yt-core.js';
+import { nextIndex, needsTitle, errorReason, isSongError } from '../core/yt-core.js';
 
 function formatTime(sec) {
   const s = Math.max(0, Math.floor(Number(sec) || 0));
@@ -95,12 +95,15 @@ export const playerBlock = {
     let cueEndTriggeredFor = null;
     let erroredVideoId = null;
     let skipTimer = 0;
+    let errorStreak = 0; // 連續幾首報錯（暫時性的錯誤不標記，靠這個避免整份清單一直轉圈）
+    let ytFailed = false;
 
     /** 開始播放了：這首能播（清掉「播不了」標記），歌名還沒拿到的話直接跟播放器要 */
     function rememberPlayable() {
       const track = store.getCurrentTrack();
       if (!track || !ytPlayer?.getVideoData) return;
       erroredVideoId = null;
+      errorStreak = 0;
       const patch = {};
       if (track.bad) patch.bad = false;
       if (needsTitle(track)) {
@@ -119,7 +122,8 @@ export const playerBlock = {
     }
 
     function getCue(track) {
-      if (!track) return { startSec: 0, endSec: 0 };
+      // 「進歌／切歌點」積木關掉時，設定先不生效
+      if (!track || store.getState().enabledBlocks?.['cue-points'] === false) return { startSec: 0, endSec: 0 };
       const saved = store.getState().cuePoints?.[track.videoId];
       return {
         startSec: Number(saved?.startSec ?? track.startSec ?? 0) || 0,
@@ -228,6 +232,7 @@ export const playerBlock = {
       }
       loadedVideoId = null;
       erroredVideoId = null;
+      clearTimeout(skipTimer);
       store.setState({ currentIndex: idx, isPlaying: true });
       syncPlayerToCurrentTrack(true);
       if (broadcast) bus.emit('room:playbackAction', { action: 'select', index: idx });
@@ -270,15 +275,39 @@ export const playerBlock = {
         bus.emit('room:playbackAction', { action: 'toggle' });
         return;
       }
+      if (!ytPlayer && ytFailed) {
+        // 剛剛載不到：重新載一次，載好就照下面設定的「播放」開始播（又失敗會自動變回暫停）
+        toast('正在重新載入 YouTube 播放器…');
+        initPlayer();
+      }
       const targetIndex = currentIndex < 0 ? 0 : currentIndex;
       const nextPlaying = !isPlaying;
-      if (nextPlaying) erroredVideoId = null; // 自己按 ▶：就算之前播不了也再試一次
+      if (nextPlaying) {
+        erroredVideoId = null; // 自己按 ▶：就算之前播不了也再試一次
+        errorStreak = 0;
+      } else clearTimeout(skipTimer); // 暫停了：剛剛排好的「跳下一首」取消
       store.setState({ currentIndex: targetIndex, isPlaying: nextPlaying });
       syncPlayerToCurrentTrack(nextPlaying);
       if (room) bus.emit('room:playbackAction', { isPlaying: nextPlaying, currentIndex: targetIndex });
     }
 
-    loadYouTubeAPI().then((YT) => {
+    function initPlayer() {
+      if (ytPlayer) return;
+      ytFailed = false;
+      loadYouTubeAPI().then(
+        (YT) => {
+          if (ytPlayer) return;
+          createPlayer(YT);
+        },
+        () => {
+          ytFailed = true;
+          if (store.getState().isPlaying) store.setState({ isPlaying: false });
+          toast('YouTube 播放器載入失敗（網路不穩？），按 ▶ 會再試一次');
+        }
+      );
+    }
+
+    function createPlayer(YT) {
       ytPlayer = new YT.Player('yt-player-host', {
         width: '100%',
         height: '100%',
@@ -310,17 +339,36 @@ export const playerBlock = {
             // YouTube 有時同一首會連續報兩次錯：同一首只處理一次
             if (!track || erroredVideoId === track.videoId) return;
             erroredVideoId = track.videoId;
-            store.updateTrack(track.videoId, { bad: true });
-            toast(`${errorReason(event.data)}，自動跳下一首`);
+            errorStreak++;
+            if (isSongError(event.data)) store.updateTrack(track.videoId, { bad: true });
+            const { queue, isPlaying } = store.getState();
+            if (errorStreak >= queue.length) {
+              // 整份清單每首都試過一次了還是不行：停下來，不要一直轉圈
+              errorStreak = 0;
+              clearTimeout(skipTimer);
+              store.setState({ isPlaying: false });
+              toast(`${errorReason(event.data)}；清單裡的歌目前都播不了，已停止`);
+              return;
+            }
+            toast(`${errorReason(event.data)}，${isPlaying ? '自動跳下一首' : '已換到下一首'}`);
             clearTimeout(skipTimer);
             skipTimer = setTimeout(() => {
               const now = store.getCurrentTrack();
-              if (now && now.videoId === erroredVideoId) nextTrack(true);
+              if (!now || now.videoId !== erroredVideoId) return;
+              if (store.getState().isPlaying) {
+                nextTrack(true);
+              } else {
+                // 還沒開始播（只是載入）時報錯：換到下一首，但不要自己開始播
+                const idx = pickNextIndex(1, true);
+                if (idx >= 0 && idx !== store.getState().currentIndex) store.setState({ currentIndex: idx });
+              }
             }, 900);
           }
         }
       });
-    });
+    }
+
+    initPlayer();
 
     // 進度條與進切歌點檢查輪詢
     const timer = setInterval(() => {
@@ -390,6 +438,7 @@ export const playerBlock = {
       unsubStore,
       bus.on('player:toggle', togglePlay),
       bus.on('player:pause', () => {
+        clearTimeout(skipTimer);
         store.setState({ isPlaying: false });
         ytPlayer?.pauseVideo?.();
       }),
