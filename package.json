@@ -1,0 +1,6 @@
+{
+  "name": "taco-party",
+  "private": true,
+  "type": "module",
+  "description": "只給測試用（讓 node 用 ES module 方式讀 core/*.js），網站不需要 npm"
+}
