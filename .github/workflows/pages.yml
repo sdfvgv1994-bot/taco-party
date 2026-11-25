@@ -1,0 +1,61 @@
+# 把網站放上 GitHub Pages：main 有改動就先跑測試，通過才更新網站
+name: 網站上線
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install pytest && pytest -q
+
+  deploy:
+    needs: test
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      # 只放網站需要的檔案；網址加上版本號（?v=提交代號），順便填版本號和部署時間（台北時間）
+      - name: 準備網站檔案
+        run: |
+          v="${GITHUB_SHA::7}"
+          mkdir -p site
+          cp -r index.html app.js sw.js styles.css manifest.webmanifest icon.svg *.png core blocks site/
+          sed -i -E "s#src=\"app\.js\"#src=\"app.js?v=$v\"#" site/index.html
+          sed -i -E "s#href=\"styles\.css\"#href=\"styles.css?v=$v\"#" site/index.html
+          grep -c "?v=$v" site/index.html
+          # 每個 JS 模組互相 import 時也加版本號：部署後不會新舊檔混用
+          sed -i -E "s#(from '[^']+\.js)'#\1?v=$v'#g" site/app.js site/core/*.js site/blocks/*.js
+          grep -c "?v=$v'" site/app.js
+          sed -i "s#name=\"app-version\" content=\"dev\"#name=\"app-version\" content=\"$v\"#" site/index.html
+          sed -i "s#name=\"app-built\" content=\"\"#name=\"app-built\" content=\"$(TZ=Asia/Taipei date '+%m/%d %H:%M')\"#" site/index.html
+          sed -i "s#const CACHE = PREFIX + '-v1';#const CACHE = PREFIX + '-$v';#" site/sw.js
+          grep -c "taco-party.*$v\|PREFIX + '-$v'" site/sw.js
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4

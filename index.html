@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#7c5cff" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="taco派對兔" />
+  <meta name="description" content="派對兔風格的 YouTube 音樂播放器：貼上 YouTube 歌單連結就能連續播放，手機加到主畫面就像 App。" />
+  <meta name="app-version" content="dev" />
+  <meta name="app-built" content="" />
+  <title>taco 派對兔 YT 播放器</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <!-- 頂部 App 列 -->
+    <header class="top-bar">
+      <div class="brand">
+        <img src="icon.svg" alt="" class="brand-icon" />
+        <div>
+          <div class="brand-title">taco 派對兔 YT 播放器</div>
+          <div class="brand-sub" id="topStatusBadge">單機模式 · 積木架構</div>
+        </div>
+      </div>
+      <div class="top-actions">
+        <button id="installAppBtn" class="pill-btn hidden" type="button">安裝 App</button>
+      </div>
+    </header>
+
+    <!-- 主內容視圖區（依底部 Tab 切換） -->
+    <main class="main-content">
+      <!-- Tab 1: 正在播放 -->
+      <section id="tab-player" class="tab-panel active" data-tab="player">
+        <div id="slot-player"></div>
+        <div id="slot-cue-points"></div>
+        <div id="slot-sleep-timer"></div>
+      </section>
+
+      <!-- Tab 2: 貼上連結 / 歌單 -->
+      <section id="tab-playlist" class="tab-panel" data-tab="playlist">
+        <div id="slot-importer"></div>
+        <div id="slot-queue"></div>
+      </section>
+
+      <!-- Tab 3: 派對房 -->
+      <section id="tab-party" class="tab-panel" data-tab="party">
+        <div id="slot-party-room"></div>
+      </section>
+
+      <!-- Tab 4: 積木中心 -->
+      <section id="tab-blocks" class="tab-panel" data-tab="blocks">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h2>積木架構中心</h2>
+              <p class="muted">每個功能都是獨立可插拔的 Block，可即時開啟或停用</p>
+            </div>
+          </div>
+          <div id="blockManagerList" class="block-list"></div>
+        </div>
+        <p class="app-ver" id="appVer"></p>
+      </section>
+    </main>
+
+    <!-- 底部迷你播放條（非播放分頁時顯示） -->
+    <div id="miniPlayerBar" class="mini-player hidden">
+      <img id="miniThumb" src="icon.svg" alt="" class="mini-thumb" />
+      <div class="mini-info" id="miniInfoTap">
+        <div id="miniTitle" class="mini-title">尚未選擇歌曲</div>
+        <div id="miniAuthor" class="mini-author">點此回到播放器</div>
+      </div>
+      <button id="miniPlayBtn" class="icon-btn primary-circle" type="button" aria-label="播放或暫停">▶</button>
+      <button id="miniNextBtn" class="icon-btn" type="button" aria-label="下一首">⏭</button>
+    </div>
+
+    <!-- 手機 App 底部導覽列 -->
+    <nav class="bottom-nav" aria-label="主導覽">
+      <button class="nav-item active" data-target="player" type="button">
+        <span class="nav-icon">🎵</span>
+        <span class="nav-label">播放</span>
+      </button>
+      <button class="nav-item" data-target="playlist" type="button">
+        <span class="nav-icon">📋</span>
+        <span class="nav-label">歌單</span>
+      </button>
+      <button class="nav-item" data-target="party" type="button">
+        <span class="nav-icon">🐰</span>
+        <span class="nav-label">派對房</span>
+      </button>
+      <button class="nav-item" data-target="blocks" type="button">
+        <span class="nav-icon">🧱</span>
+        <span class="nav-label">積木</span>
+      </button>
+    </nav>
+  </div>
+
+  <!-- Toast 通知 -->
+  <div id="toastContainer" class="toast-container" aria-live="polite"></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
